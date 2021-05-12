@@ -9,7 +9,7 @@ some obscure error.
 
 * `learn_what_you_dont_know_focus.pdf`
   * Where our NeurIPS/Nature, best paper-worthy paper resides.
-  * "Best paper I've ever read" - Geoffrey Hinton, Yann LeCun
+  * "_Best paper I've ever read_" - Geoffrey Hinton, Yann LeCun
     -Probably
 
 * `FocusTraining`
