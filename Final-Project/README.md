@@ -7,6 +7,11 @@ the required packages to run our code.  You can also use `ml_final_proj.yml` to
 create from `.yml`, but Eli had issues getting it to work on his machine due to
 some obscure error.  
 
+* `learn_what_you_dont_know_focus.pdf`
+  * Where our NeurIPS/Nature, best paper-worthy paper resides.
+  * "Best paper I've ever read" - Geoffrey Hinton, Yann LeCun
+    -Probably
+
 * `FocusTraining`
 The majority of the code for this project in terms of implementation for *Adaptive
   Focus Learning* can be found in the directory `FocusTraining`.  It is a python
