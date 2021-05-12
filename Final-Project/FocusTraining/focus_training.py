@@ -186,6 +186,12 @@ class StartToFocus:
     def toggle_focus(self):
         self.focus = not self.focus
 
+class NormalLearning(StartToFocus):
+    def __init__(self):
+        super().__init__()
+    
+    def time_to_focus(self, train_history, total_val_history, class_val_history):
+        return False
 
 class FocusLearning:
     """FocusLearning is our modified training procedure where we take gradients
@@ -729,6 +735,133 @@ class FocusLearning:
                 train_pbar.set_postfix(combined)
                 train_pbar.update()
                 train_pbar.close()
+
+            # End of epoch, store validation results
+            class_val_history.update(metrics_by_class)
+            total_val_history.update(val_total_metrics_tracker)
+
+        return train_history, total_val_history, class_val_history
+
+
+class FocusLearningReversed(FocusLearning):
+
+    def __init__(self, model, dset_name, class_names, metrics, optimizer,
+                 start_to_focus):
+        super().__init__(model, dset_name, class_names, metrics, optimizer,
+                 start_to_focus)
+    
+    def train(self, n_epochs, batch_size=16, normal_grad_penalty=1,
+              val_monitor_metric='loss', worst_k=2, focus_penalty=1e-2):
+        """Trains the model for a certain number of epochs.
+
+        Parameters
+        ----------
+        n_epochs : int
+            Number of epochs to train the model.
+        batch_size : int
+            Batch size to use.
+        normal_grad_penalty : float
+            Penalty to apply to gradients from the tradional training loop.
+        val_monitor_metric : str, default: 'loss'
+            Valiation metric to monitor for getting the "worst" classes.
+        worst_k : int
+            How many classes we want to focus on with the modified procedure.
+        focus_penalty : float
+            Penalty to apply to gradients from the focus training loop.
+
+        Returns
+        -------
+        train_history, total_val_history, class_val_history
+            Histories for training, total valiation, and by class validation.
+
+        """
+
+        # Store histories
+        class_val_history = ByClassHistory(
+            self.class_names, self.metrics, prefix='val_')
+        total_val_history = ModelMetricTracker(
+            metrics=self.metrics, prefix='val_')
+        train_history = ModelMetricTracker(metrics=self.metrics, prefix='')
+
+        # Run for each epoch
+        for epoch in range(n_epochs):
+
+            # For user feedback
+            epoch_tqdm_desc = 'Epoch ' + str(epoch + 1)
+
+            # Evaluate model (by class and get total value)
+            metrics_by_class = self._evaluate_by_class(batch_size)
+
+            # If modified procedure kicks in, get grads w.r.t. worst worst_k classes
+            if self.start_to_focus.time_to_focus(train_history, total_val_history, class_val_history):
+
+                # Get the worst performing k classes
+                worst_k_classes = self._get_worst_k(
+                    metrics_by_class, val_monitor_metric, worst_k)
+                print(
+                    f'Worst performing classes: {self._format_worst_k(worst_k_classes, val_monitor_metric)}')
+
+                # Create a dataset with just the worst k classes
+                worst_k_dataset = self._create_worst_k_dataset(worst_k_classes)
+
+                # For user feedback
+                epoch_tqdm_desc = 'Epoch ' + \
+                    str(epoch + 1) + ' w.r.t ' + worst_k_dataset.name
+
+                # Train the model w.r.t. the worst classes only
+                train_steps_per_epoch = self._compute_steps_per_epoch(
+                    worst_k_dataset.n_observations, batch_size)
+                train_pbar, train_metrics_display, train_metrics_tracker = self._train(worst_k_dataset, batch_size,
+                                                                                       epoch_tqdm_desc,
+                                                                                       train_steps_per_epoch,
+                                                                                       grad_penalty=focus_penalty,
+                                                                                       prefix='')
+
+                # Evaluate model (by class and get total value)--again
+                metrics_by_class = self._evaluate_by_class(batch_size)
+
+                # Display evaluation metrics
+                class_metrics_display = self._get_display_metrics_by_class(
+                    metrics_by_class, 'val_')
+                val_total_metrics_tracker = self._combine_metrics_by_classes(
+                    metrics_by_class)
+                val_metrics_display = val_total_metrics_tracker.get_display(
+                    'val_')
+                val_metrics_display.update(class_metrics_display)
+                combined = {**train_metrics_display, **val_metrics_display}
+                train_pbar.set_postfix(combined)
+                train_pbar.update()
+                train_pbar.close()
+
+
+            # Train the model on the training data
+            train_steps_per_epoch = self._compute_steps_per_epoch(
+                self.n_train_observations, batch_size)
+            train_pbar, train_metrics_display, train_metrics_tracker = self._train(self.train_dataset,
+                                                                                   batch_size, epoch_tqdm_desc,
+                                                                                   train_steps_per_epoch,
+                                                                                   grad_penalty=normal_grad_penalty,
+                                                                                   prefix='')
+
+            # Store history
+            train_history.update(train_metrics_tracker)
+
+            # Evaluate model (by class and get total value)
+            metrics_by_class = self._evaluate_by_class(batch_size)
+
+            # Display evaluation metrics
+            class_metrics_display = self._get_display_metrics_by_class(
+                metrics_by_class, 'val_')
+            val_total_metrics_tracker = self._combine_metrics_by_classes(
+                metrics_by_class)
+            val_metrics_display = val_total_metrics_tracker.get_display('val_')
+            val_metrics_display.update(class_metrics_display)
+            combined = {**train_metrics_display, **val_metrics_display}
+            train_pbar.set_postfix(combined)
+            train_pbar.update()
+            train_pbar.close()
+
+
 
             # End of epoch, store validation results
             class_val_history.update(metrics_by_class)
